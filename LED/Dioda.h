@@ -1,0 +1,1 @@
+void dioda(int c);
