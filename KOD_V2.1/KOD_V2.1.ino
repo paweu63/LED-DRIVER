@@ -1,5 +1,5 @@
 // WYPIERDOLIC DIODE PROSTOWNICZA 
-//mlocek chuj
+
 
 #include <EEPROM.h>
 
