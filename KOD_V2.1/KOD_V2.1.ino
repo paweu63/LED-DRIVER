@@ -28,6 +28,11 @@ volatile unsigned long irCode = 0;
 volatile int bitIndex = 0;
 volatile bool codeReady = false;
 volatile unsigned long lastChange = 0;
+//IR Pilot
+float factor = 1.0;
+const float BRIGHTNESS_STEP = 0.1;
+static int colorIndex = 0;       // 0=czerwony, 1=zielony, 2=niebieski
+static bool colorActive = false;
 
 //Encoder variables
 volatile int encoderCounter = 0;
@@ -389,87 +394,135 @@ void Memory_change() {
 Decoded IR results
 */
 void IR_setup(unsigned long irData) {
+
+  //static int colorIndex = 0;       // 0=czerwony, 1=zielony, 2=niebieski
+  //static bool colorActive = false;
+
   switch(irData){
-    case 339755285://RED
-      R=255;
-      G=0;
-      B=0;
+    case 1145049365://RED
+       R=255;
+       G=0;
+       B=0;
+
+       colorIndex = 0;
+       colorActive = true;
+       factor = 1.0;
+     break;
+    case 1090524245://w prawo
+      if (colorActive) 
+      { 
+        colorIndex++;
+        if (colorIndex > 2) colorIndex = 0;
+        switch(colorIndex) 
+        {
+          case 0: R=255; G=0; B=0; break;
+          case 1: R=0; G=255; B=0; break;
+          case 2: R=0; G=0; B=255; break;
+        }
+      }
+      factor = 1.0;
     break;
-    case 1094718485://GREEN
-      R=0;
-      G=255;
-      B=0;
-    break;
-    case 1157632085://BLUE
-      R=0;
-      G=0;
-      B=255;
-    break;
+    case 1409286485://w lewo
+       if (colorActive) 
+       { 
+        colorIndex--;
+        if (colorIndex < 0) colorIndex = 2;
+        switch(colorIndex) 
+        {
+          case 0: R=255; G=0; B=0; break;
+          case 1: R=0; G=255; B=0; break;
+          case 2: R=0; G=0; B=255; break;
+        }
+      }
+      factor = 1.0;
+    break; 
     case 83906645://1
       R=EEPROM.read(0);
       G=EEPROM.read(1);
       B=EEPROM.read(2);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 20993045://2
       R=EEPROM.read(3);
       G=EEPROM.read(4);
       B=EEPROM.read(5);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 356794385://3
       R=EEPROM.read(6);
       G=EEPROM.read(7);
       B=EEPROM.read(8);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 16798805://4
       R=EEPROM.read(9);
       G=EEPROM.read(10);
       B=EEPROM.read(11);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 88100885://5
       R=EEPROM.read(12);
       G=EEPROM.read(13);
       B=EEPROM.read(14);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 289686545://6
       R=EEPROM.read(15);
       G=EEPROM.read(16);
       B=EEPROM.read(17);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 268715345://7
       R=EEPROM.read(18);
       G=EEPROM.read(19);
       B=EEPROM.read(20);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 272909585://8
       R=EEPROM.read(21);
       G=EEPROM.read(22);
       B=EEPROM.read(23);
+      colorActive = false;
+      factor = 1.0;
     break;
     case 285492305://9
       R=EEPROM.read(24);
       G=EEPROM.read(25);
       B=EEPROM.read(26);
+      colorActive = false;
+      factor = 1.0;
     break;
-    case 1342440785://OFF
+    case 1141117265://OFF
       R=0;
       G=0;
       B=0;
+      colorActive = false;
+      factor = 1.0;
     break;
-    case 1409286485://DECREMENT
-    for (int i = 0; i<256; i++)
-    {
-      
-      R = i;
-      G = 0;
-      B = 0;
-      delay(100);
-    } 
+    case 1094718485://DECREMENT
+      factor = 1.0 - BRIGHTNESS_STEP;
+      R = constrain((int)(R * factor), 0, 255);
+      G = constrain((int)(G * factor), 0, 255);
+      B = constrain((int)(B * factor), 0, 255);
     
     break;
-    case 1145049365://INCREMENT
+    case 283985://INCREMENT
+      factor = 1.0 + BRIGHTNESS_STEP;
+
+      int maxBefore = max(max(R, G), B);
+      if (maxBefore > 0) {
+        R = constrain((int)(R * factor), 0, 255);
+        G = constrain((int)(G * factor), 0, 255);
+        B = constrain((int)(B * factor), 0, 255);
+      }
     break;
-
-
   }
 }
 
