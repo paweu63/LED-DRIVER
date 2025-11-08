@@ -28,13 +28,26 @@ volatile unsigned long irCode = 0;
 volatile int bitIndex = 0;
 volatile bool codeReady = false;
 volatile unsigned long lastChange = 0;
+//IR Pilot
+int newR;
+int newG;
+int newB;
+static int colorIndex = 0;
+bool colorActive = false;
 
 //Encoder variables
 volatile int encoderCounter = 0;
 int lastEncoderPinA = 0;
 
+//Brightness
+float brightnessFactor = 1.0;
+bool brightnessMode = true;
+const float ENCODER_BRIGHTNESS_STEP = 0.02;
+const float IR_BRIGHTNESS_STEP = 0.10;
+
 //LED variables
-int R,G,B = 0;
+int R = 0, G = 0, B = 0;
+int baseR = 255, baseG = 255, baseB = 255;
 
 //Memory variables
 int data;
@@ -49,6 +62,7 @@ void LED_change_program();
 int readButton();
 // Encoder
 void handleEncoder();
+void handleEncoderBrightness();
 // Segment display
 void Display(int i);
 // EEPROM memory
@@ -133,6 +147,7 @@ void loop() {
     interrupts();
     IR_setup(code);
   }
+  handleEncoderBrightness();
   Display(data);
   setRGB(R,G,B);
   
@@ -206,6 +221,7 @@ encoder R,G,B variables are changed, encoder button changes the
 variable to be written
 */ 
 void LED_change_program() {
+  brightnessMode = false;
   int step = 1;
   encoderCounter = 0;
   while(step != 4) {
@@ -239,6 +255,8 @@ void LED_change_program() {
     }
     setRGB(R,G,B);
   }
+  setColor(R, G, B);
+  brightnessMode = true;
 
 }
 
@@ -254,6 +272,49 @@ void handleEncoder() {
     }
   }
   lastEncoderPinA = digitalRead(ENCODER_PIN_A);
+}
+
+void applyBrightness() {
+  R = constrain((int)(baseR * brightnessFactor), 0, 255);
+  G = constrain((int)(baseG * brightnessFactor), 0, 255);
+  B = constrain((int)(baseB * brightnessFactor), 0, 255);
+  setRGB(R, G, B);
+}
+
+void increaseBrightness() {
+  brightnessFactor += IR_BRIGHTNESS_STEP;
+  if (brightnessFactor > 1.0) brightnessFactor = 1.0;
+  applyBrightness();
+}
+
+void decreaseBrightness() {
+  brightnessFactor -= IR_BRIGHTNESS_STEP;
+  if (brightnessFactor < 0.0) brightnessFactor = 0.0;
+  applyBrightness();
+}
+
+void setColor(int r, int g, int b) {
+  baseR = r;
+  baseG = g;
+  baseB = b;
+  applyBrightness();
+}
+
+//Zmiana jasności enkoderem
+void handleEncoderBrightness() {
+  static int lastEncoderValue = 0;
+  int delta = encoderCounter - lastEncoderValue;
+
+  // nic się nie zmieniło → wyjście
+  if (delta == 0) return;
+
+  lastEncoderValue = encoderCounter;
+
+if (brightnessMode) {
+    brightnessFactor += delta * ENCODER_BRIGHTNESS_STEP;  // czułość regulacji (2% na "krok")
+    brightnessFactor = constrain(brightnessFactor, 0.0, 1.0);
+    applyBrightness(); // przelicz nowy kolor z bazowego i aktualnym współczynnikiem jasności
+  }
 }
 
 //Display decoder
@@ -359,10 +420,11 @@ Function to Read data cell and write to R,G,B variables
  
 void Memory_Read() {
   int first_adress = (data-1)*3;
-  R=EEPROM.read(first_adress);
-  G=EEPROM.read(first_adress+1);
-  B=EEPROM.read(first_adress+2);
-  
+  setColor(
+  EEPROM.read(first_adress),
+  EEPROM.read(first_adress+1),
+  EEPROM.read(first_adress+2)
+  );
 }
 /*
 Function to add R,G,B value to memory according to setted data
@@ -389,87 +451,112 @@ void Memory_change() {
 Decoded IR results
 */
 void IR_setup(unsigned long irData) {
+
   switch(irData){
-    case 339755285://RED
-      R=255;
-      G=0;
-      B=0;
+    case 1145049365://RED
+       setColor(255, 0, 0);
+       colorIndex = 0;
+       colorActive = true;
+       brightnessFactor = 1.0;
+     break;
+
+    case 1090524245://w prawo
+      if (colorActive) 
+      { 
+        colorIndex++;
+        if (colorIndex > 2) colorIndex = 0;
+        switch(colorIndex) 
+        {
+          case 0: R=255; G=0; B=0; break;
+          case 1: R=0; G=255; B=0; break;
+          case 2: R=0; G=0; B=255; break;
+        }
+      }
+      brightnessFactor = 1.0;
     break;
-    case 1094718485://GREEN
-      R=0;
-      G=255;
-      B=0;
-    break;
-    case 1157632085://BLUE
-      R=0;
-      G=0;
-      B=255;
-    break;
+
+    case 1409286485://w lewo
+       if (colorActive) 
+       { 
+        colorIndex--;
+        if (colorIndex < 0) colorIndex = 2;
+        switch(colorIndex) 
+        {
+          case 0: R=255; G=0; B=0; break;
+          case 1: R=0; G=255; B=0; break;
+          case 2: R=0; G=0; B=255; break;
+        }
+      }
+      brightnessFactor = 1.0;
+    break; 
+
     case 83906645://1
-      R=EEPROM.read(0);
-      G=EEPROM.read(1);
-      B=EEPROM.read(2);
+      setColor(EEPROM.read(0), EEPROM.read(1), EEPROM.read(2));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 20993045://2
-      R=EEPROM.read(3);
-      G=EEPROM.read(4);
-      B=EEPROM.read(5);
+      setColor(EEPROM.read(3), EEPROM.read(4), EEPROM.read(5));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 356794385://3
-      R=EEPROM.read(6);
-      G=EEPROM.read(7);
-      B=EEPROM.read(8);
+      setColor(EEPROM.read(6), EEPROM.read(7), EEPROM.read(8));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 16798805://4
-      R=EEPROM.read(9);
-      G=EEPROM.read(10);
-      B=EEPROM.read(11);
+     setColor(EEPROM.read(9), EEPROM.read(10), EEPROM.read(11));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 88100885://5
-      R=EEPROM.read(12);
-      G=EEPROM.read(13);
-      B=EEPROM.read(14);
+      setColor(EEPROM.read(12), EEPROM.read(13), EEPROM.read(14));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 289686545://6
-      R=EEPROM.read(15);
-      G=EEPROM.read(16);
-      B=EEPROM.read(17);
+      setColor(EEPROM.read(15), EEPROM.read(16), EEPROM.read(17));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 268715345://7
-      R=EEPROM.read(18);
-      G=EEPROM.read(19);
-      B=EEPROM.read(20);
+      setColor(EEPROM.read(18), EEPROM.read(19), EEPROM.read(20));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 272909585://8
-      R=EEPROM.read(21);
-      G=EEPROM.read(22);
-      B=EEPROM.read(23);
+     setColor(EEPROM.read(21), EEPROM.read(22), EEPROM.read(23));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
+
     case 285492305://9
-      R=EEPROM.read(24);
-      G=EEPROM.read(25);
-      B=EEPROM.read(26);
-    break;
-    case 1342440785://OFF
-      R=0;
-      G=0;
-      B=0;
-    break;
-    case 1409286485://DECREMENT
-    for (int i = 0; i<256; i++)
-    {
-      
-      R = i;
-      G = 0;
-      B = 0;
-      delay(100);
-    } 
-    
-    break;
-    case 1145049365://INCREMENT
+      setColor(EEPROM.read(24), EEPROM.read(25), EEPROM.read(26));
+      colorActive = false;
+      brightnessFactor = 1.0;
     break;
 
+    case 1141117265://OFF
+      setColor(0, 0, 0);
+      colorActive = false;
+      brightnessFactor = 1.0;
+    break;
 
+    case 1094718485://DECREMENT
+      decreaseBrightness();
+    break;
+
+    case 283985://INCREMENT
+    increaseBrightness();
+    break;
   }
 }
 
@@ -482,8 +569,10 @@ ISR(PCINT1_vect) { // PCINT for A0-A5
   unsigned long diff = now - lastChange;
   lastChange = now;
 
+  if (diff < 100) return;
+
   // Transmition start ~9ms
-  if (diff > 8500 && diff < 9500) {
+  if (diff > 8000 && diff < 10000) {
     bitIndex = 0;
     irCode = 0;
     return;
