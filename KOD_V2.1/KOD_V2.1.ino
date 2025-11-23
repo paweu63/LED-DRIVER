@@ -45,6 +45,14 @@ bool brightnessMode = true;
 const float ENCODER_BRIGHTNESS_STEP = 0.02;
 const float IR_BRIGHTNESS_STEP = 0.10;
 
+//Rainbow
+unsigned long Rainbow_time = 0;
+bool rainbowActive = false;
+byte hue = 0;                   // aktualny odcień (0–255)
+const byte hueStep = 1;         // szybkość przejść
+unsigned long rainbowInterval = 20; // co ile ms zmiana koloru
+int lastStaticR = 0, lastStaticG = 0, lastStaticB = 0;
+
 //LED variables
 int R = 0, G = 0, B = 0;
 int baseR = 255, baseG = 255, baseB = 255;
@@ -71,6 +79,9 @@ void Memory_add();
 void Memory_change();
 // IR
 void IR_setup(unsigned long irData);
+//Rainbow
+void wheelToRGB(byte pos, int &r, int &g, int &b);
+void Rainbow();
 
 
 void setup() {
@@ -147,9 +158,25 @@ void loop() {
     interrupts();
     IR_setup(code);
   }
+
+  if (rainbowActive && (millis() - Rainbow_time > rainbowInterval)) {
+    Rainbow_time = millis();
+
+    hue += hueStep;            // byte zawija się 255->0 automatycznie
+    int r, g, b;
+    wheelToRGB(hue, r, g, b);  // przelicz barwę 0..255 na RGB
+
+    // zastosuj globalny współczynnik jasności
+    r = (int)(r * brightnessFactor);
+    g = (int)(g * brightnessFactor);
+    b = (int)(b * brightnessFactor);
+
+    setRGB(r, g, b);
+  }
+
   handleEncoderBrightness();
   Display(data);
-  setRGB(R,G,B);
+  if (!rainbowActive) setRGB(R, G, B);
   
 }
 void setRGB(int r, int g, int b) {
@@ -297,7 +324,39 @@ void setColor(int r, int g, int b) {
   baseR = r;
   baseG = g;
   baseB = b;
+
+  lastStaticR = r;
+  lastStaticG = g;
+  lastStaticB = b;
+
   applyBrightness();
+}
+
+void Rainbow() {
+  rainbowActive = !rainbowActive; // włącz/wyłącz
+  if (rainbowActive) {
+    Rainbow_time = millis();
+  } else {
+    setColor(lastStaticR, lastStaticG, lastStaticB);// powrót do statycznego koloru
+  }
+}
+
+void wheelToRGB(byte pos, int &r, int &g, int &b) {
+  if (pos < 85) {
+    r = 255 - pos * 3;
+    g = pos * 3;
+    b = 0;
+  } else if (pos < 170) {
+    pos -= 85;
+    r = 0;
+    g = 255 - pos * 3;
+    b = pos * 3;
+  } else {
+    pos -= 170;
+    r = pos * 3;
+    g = 0;
+    b = 255 - pos * 3;
+  }
 }
 
 //Zmiana jasności enkoderem
@@ -313,7 +372,7 @@ void handleEncoderBrightness() {
 if (brightnessMode) {
     brightnessFactor += delta * ENCODER_BRIGHTNESS_STEP;  // czułość regulacji (2% na "krok")
     brightnessFactor = constrain(brightnessFactor, 0.0, 1.0);
-    applyBrightness(); // przelicz nowy kolor z bazowego i aktualnym współczynnikiem jasności
+    if (!rainbowActive) applyBrightness();
   }
 }
 
@@ -555,7 +614,13 @@ void IR_setup(unsigned long irData) {
     break;
 
     case 283985://INCREMENT
-    increaseBrightness();
+      increaseBrightness();
+    break;
+
+    case 1342440785://RAINBOW
+      Rainbow();
+      brightnessFactor = 1.0;
+      colorActive = false;
     break;
   }
 }
